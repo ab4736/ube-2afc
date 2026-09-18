@@ -45,7 +45,7 @@ Change `YOUR_FOLDER` below to your folder under KNORMAN (for example `agoeschel`
 ```bash
 mkdir -p /scratch/gpfs/KNORMAN/YOUR_FOLDER
 cd /scratch/gpfs/KNORMAN/YOUR_FOLDER
-git clone https://github.com/GITHUB_OWNER/ube-2afc.git
+git clone https://github.com/ab4736/ube-2afc.git
 cd ube-2afc
 ```
 
