@@ -1,0 +1,6 @@
+data/*
+checkpoints/*
+results/*
+logs/*
+!*/.gitkeep
+__pycache__/
