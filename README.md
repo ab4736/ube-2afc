@@ -25,10 +25,7 @@ If you just want to see it work first, use the Bixby subjects (sub-06 / sub-07).
 
 ---
 
-## 1. Get onto Della
-
-You need a Della account on the `knorman` group. Wanjia, Dhairyya and Aidan already have one. Shruti, you'll need to ask Ken to get added.
-
+## 1. Get onto Della (Princeton)
 Two ways in:
 
 - Easiest: go to https://mydella.princeton.edu in a browser (needs the Princeton VPN if you're off campus). Log in, then click **Clusters > Della Shell Access** at the top. That gives you a terminal in the browser. You can also browse, upload and download files there with **Files > Home Directory**.
