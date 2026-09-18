@@ -266,21 +266,6 @@ Training loss (in `train_encoder.py`): mean squared error between predicted and 
 
 The similarity in the 2AFC is Pearson correlation across voxels, which is the same as the dot product after z-scoring each pattern. Don't swap it for plain cosine on the raw patterns, on sub-005 that dropped 2AFC from 0.935 to 0.855.
 
-## Numbers we got
-
-Bixby, pretraining sessions 01/02/03, 13 held-out scene pairs (26 trials), `union_mask` voxels:
-
-| | 2AFC | 95% CI | mean CPD | retrieval |
-|---|---|---|---|---|
-| sub-06 | 0.923 | [0.81, 1.00] | +0.507 | 0.808 |
-| sub-07 | 0.692 | [0.50, 0.85] | +0.246 | 0.500 |
-
-Retraining from scratch with this code (default seed) gives exactly these numbers. With only 26 trials the CIs are wide, so small differences don't mean much.
-
-For comparison, on sub-005 (the offline MST data, 31 pairs) this approach got 0.935, and the Brain-IT CLIP decoder got 0.71 on the same trials.
-
-The ses-04/05 snap scenes for Bixby aren't included, their stimulus folder wasn't readable last I checked. Once the images are readable it's just a different input file.
-
 ## Working on the code
 
 If you change something, do it on your own branch so you don't step on each other:
