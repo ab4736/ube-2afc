@@ -49,18 +49,15 @@ pip install -r requirements.txt
 partition if your cluster needs them. Nothing else in the repo holds a path, so this is the only
 file you edit.
 
-4. Download the pretrained base weights (about 10 MB each):
+4. Download the pretrained weights:
 
 ```bash
 ./download_checkpoints.sh
 ```
 
-5. Cache the DINOv2 backbone. Run this on a login node, because compute nodes usually have no
-internet:
-
-```bash
-./get_dinov2.sh
-```
+That gets the encoder weights (about 10 MB each) and the DINOv2 backbone (1.2 GB). After this the
+code never needs the internet again, which matters because most clusters block it on compute
+nodes. If the repo is private you will need to `huggingface-cli login` first.
 
 You need a Slurm cluster with one GPU, 16 GB or more.
 
@@ -316,7 +313,12 @@ that, skip this. Random init works fine.
 
 ## Pretraining the base yourself
 
-You do not need this. It takes the full NSD dataset and days of GPU time.
+You do not need this. It takes the full NSD dataset and days of GPU time. If you do want it, the
+preprocessed NSD data is on hugging face too:
+
+```bash
+WITH_NSD=1 ./download_checkpoints.sh      # 17 GB, and it is NSD data, so their terms apply
+```
 
 `extras/nsd/` has the original Irani lab training script, copied over almost unchanged. That is
 the one to use if you want to pretrain a base the normal way.
@@ -355,7 +357,7 @@ code does that. Run `check_inputs.py` on it before training.
 | `PROBLEM: ... test (pairmate) images also appear in train/val` | a pairmate image got into training, so the result would be meaningless. Only happens if you built the npz yourself |
 | `PROBLEM: pretrained base ... is missing` | run `./download_checkpoints.sh` |
 | `ModuleNotFoundError: dinov2` or `models` | run the scripts from inside the repo folder, they add themselves to the path |
-| torch.hub cannot download | run `./get_dinov2.sh` on a login node, and set `TORCH_HUB` in `config.sh` |
+| torch.hub cannot download | you are missing the backbone. run `./download_checkpoints.sh`, which fetches it, or `./get_dinov2.sh` on a login node |
 | `this checkpoint was trained against base ... which is not there now` | the base file moved, pass `--base` pointing at it |
 | val retrieval near chance | the encoder did not fit. Check the betas are in the right order with the right mask, and that you have enough training images |
 | `sbatch: error: invalid account` | fix `SLURM_ACCOUNT` in `config.sh`, or blank it if your cluster does not use accounts |
@@ -366,7 +368,8 @@ code does that. Run `check_inputs.py` on it before training.
 |---|---|
 | `config.sh` | the only place you set paths and Slurm settings |
 | `submit.sh` | queues the whole pipeline |
-| `download_checkpoints.sh`, `get_dinov2.sh` | fetch the base weights and the backbone |
+| `download_checkpoints.sh` | fetches the weights and the backbone from hugging face |
+| `get_dinov2.sh` | fallback way to get the backbone through torch.hub, if you did not download it |
 | `make_inputs.py` | builds the input file from your betas, csvs and images |
 | `check_inputs.py` | checks an input file and explains what is wrong |
 | `train_encoder.py` | fits the encoder to your subject |

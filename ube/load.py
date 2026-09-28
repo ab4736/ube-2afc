@@ -7,7 +7,39 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # the dinov2 backbone is not in that file, it gets loaded separately, so the download stays small
 
 
-def _dino(hub=""):
+# where to look for a local copy of the backbone weights, in order
+def _local_weights(explicit=""):
+    cands = [explicit, os.environ.get("UBE_DINO_WEIGHTS", ""),
+             os.path.join(HERE, "checkpoints", "dinov2_vitl14_reg4_pretrain.pth")]
+    for c in cands:
+        if c and os.path.exists(c):
+            return c
+    return ""
+
+
+def _dino(hub="", weights=""):
+    """build the dinov2 backbone
+
+    if we can find the weights on disk we build it from the copy of dinov2 vendored in this
+    repo and load them, which needs no internet at all. otherwise fall back to torch.hub,
+    which downloads both the code and the weights the first time
+    """
+    w = _local_weights(weights)
+    if w:
+        if HERE not in sys.path:
+            sys.path.insert(0, HERE)
+        from dinov2.models import vision_transformer as vits
+        # these settings are dinov2_vitl14_reg, they have to match or the weights will not load
+        model = vits.vit_large(img_size=518, patch_size=14, init_values=1.0, ffn_layer="mlp",
+                               block_chunks=0, num_register_tokens=4,
+                               interpolate_antialias=True, interpolate_offset=0.0)
+        sd = torch.load(w, map_location="cpu", weights_only=True)
+        missing, unexpected = model.load_state_dict(sd, strict=False)
+        if missing or unexpected:
+            raise RuntimeError(f"dinov2 weights at {w} do not match the model: "
+                               f"missing {len(missing)}, unexpected {len(unexpected)}")
+        return model.eval()
+
     hub = hub or os.environ.get("UBE_TORCH_HUB", "")
     if hub:
         torch.hub.set_dir(hub)                                    # keeps it working offline
