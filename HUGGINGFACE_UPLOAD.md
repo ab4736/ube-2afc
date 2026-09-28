@@ -52,8 +52,8 @@ and link the repo. If you want, paste in the "how is this different from the Ira
 |---|---|---|
 | `fmri_v2.npz` | 5.8 GB | NSD betas. NSD has a data use agreement that people have to sign themselves. Redistributing the betas, even z-scored and repeat-averaged, is not ours to do. |
 | `all_images_v2_224.npy` | 11 GB | the 73k NSD stimulus images (COCO). Same reasoning, and it is COCO's to distribute. |
-| `sub-06_roi_vox_all_sessions.pkl`, `sub-07_...` | 0.6 GB each | human subject data from our own study. Not public, and not ours to release. |
-| any fitted subject encoder (`sub-06_infonce.pth` etc.) | 1.2 GB each | these contain voxel embeddings fit to an individual's brain. Keep them internal. |
+| our own subjects' beta files | 0.6 GB each | human subject data from our own study. Not public, and not ours to release. |
+| any encoder fitted to one of our subjects | a few MB each | these are voxel embeddings fit to an individual's brain. Keep them internal. |
 
 **Model weights: cleared.** You have the authors' agreement to put these up, so the three base
 files and the voxel embeddings are fine to upload. Worth adding a line to the model card crediting

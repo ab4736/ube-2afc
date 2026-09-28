@@ -14,7 +14,7 @@ Also prints 1-of-N retrieval, a val-set retrieval sanity check, and some
 controls that should all come out at chance. Writes a per-trial csv and a json.
 
 usage:
-    python eval_2afc.py --data data/sub-06.npz --enc checkpoints/sub-06_infonce.pth
+    python eval_2afc.py --data data/sub-08.npz --enc checkpoints/sub-08_infonce.pth
 """
 import os, sys, json, argparse
 HERE = os.path.dirname(os.path.abspath(__file__))

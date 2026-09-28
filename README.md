@@ -381,7 +381,4 @@ code does that. Run `check_inputs.py` on it before training.
 | `tools/export_base.py` | turns a big pickled encoder into the small weight files |
 | `models/`, `dinov2/` | model code, needed to load the encoder, do not edit |
 
-`make_inputs_bixby.py` reads our own lab's data directly and its paths will not exist for you. It
-is kept as a worked example of going from raw per-session betas to an input file.
-
 Questions: Akash (ab4736@princeton.edu)

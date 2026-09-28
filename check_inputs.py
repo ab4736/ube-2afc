@@ -3,7 +3,7 @@ Checks an input npz before you spend 20 min training on it.
 Prints what's wrong in plain words, or ALL GOOD.
 
 usage:
-    python check_inputs.py data/sub-06.npz
+    python check_inputs.py data/sub-08.npz
 """
 import sys, hashlib
 import numpy as np
