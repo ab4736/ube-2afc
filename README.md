@@ -6,9 +6,7 @@ alone, either offline on a completed dataset or in real time during a scan.
 This code is developed in the Computational Memory Lab at Princeton University, and is built on the
 Universal Brain Encoder (UBE) developed by the Irani lab at the Weizmann Institute, described in
 [Beliy et al.](https://arxiv.org/abs/2406.12179) with code at
-[WeizmannVision/brainit-fmri](https://github.com/WeizmannVision/brainit-fmri). Anyone who wants to
-apply the method to their own study is welcome to use it, and we are happy to help with getting it
-running on a new dataset.
+[WeizmannVision/brainit-fmri](https://github.com/WeizmannVision/brainit-fmri). 
 
 Contact: Akash Bhowmick (ab4736@princeton.edu)
 
