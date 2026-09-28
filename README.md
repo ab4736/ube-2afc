@@ -309,7 +309,7 @@ that, skip this. Random init works fine.
 
 ## Pretraining the base yourself
 
-You do not need this. It takes the full NSD dataset and days of GPU time. If you do want it, the
+You do not need this. It takes the full NSD dataset and hours of GPU time. If you do want it, the
 preprocessed NSD data is on hugging face too:
 
 ```bash
