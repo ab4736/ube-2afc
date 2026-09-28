@@ -10,6 +10,20 @@ to Private for now. Then upload the files below. The download script in the repo
 
 ## 1. upload these (the model weights)
 
+**The files are already made and sitting here:**
+
+```
+/scratch/gpfs/KNORMAN/ab4736/ube-2afc/ckpt_export/
+  ube_base_infonce.pt              9.6 MB
+  ube_base_recon.pt                9.6 MB
+  ube_base_original.pt             9.6 MB
+  nsd_voxel_embed_infonce.pt     323.6 MB
+```
+
+Upload them with exactly those filenames, because `download_checkpoints.sh` looks for them by
+name. If you name the HF repo something other than `ube-2afc`, change the `REPO=` line in that
+script or set `UBE_HF_REPO`.
+
 These are produced by `tools/export_base.py`, which strips out the frozen DINOv2 backbone and the
 NSD voxel embeddings. That is why they are small. The backbone is stock `dinov2_vitl14_reg` and is
 downloaded separately by torch.hub, so it never needs to be in here (verified: all 344 backbone
