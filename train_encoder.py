@@ -93,6 +93,15 @@ else:                                                     # the old 1.5 GB pickl
     model.voxel_embed = nn.Parameter(ve.float(), requires_grad=True)
     model = model.to(dev)
 
+# initialise the voxel embeddings from their own generator, so the result only depends on
+# --seed and not on how many random numbers building the backbone happened to use. without this
+# the same seed gives slightly different answers depending on how the base was loaded
+if warm is None:
+    EMB = model.voxel_embed.shape[1]
+    g = torch.Generator().manual_seed(args.seed)
+    scale = 0.1 / (2 * np.sqrt(EMB))
+    model.voxel_embed.data = (scale * torch.randn(NVOX, EMB, generator=g)).to(dev)
+
 opt = optim.Adam([model.voxel_embed], lr=args.lr, amsgrad=True)
 Y_t = torch.from_numpy(Ytr).to(dev)
 vind = torch.arange(NVOX).unsqueeze(0).to(dev)

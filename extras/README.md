@@ -16,7 +16,12 @@ python extras/train_base.py --data_dir /path/to/nsd_data --smoke --out /tmp/x.pt
 
 `--objective recon` gives the plain reconstruction baseline, `--objective infonce` adds the
 contrastive term. Those two switches are the difference between the two base checkpoints we
-ship.
+ship. It writes the same small weight format as the downloaded bases, so a base you train here
+drops straight into `train_encoder.py --base`.
+
+The `--smoke` run above has been tested and works: it loads NSD, builds the model, takes 3 steps
+and saves a 9.6 MB checkpoint. A full run has **not** been done from this script, so treat the
+hyperparameters as a starting point rather than a recipe.
 
 One design note. At base training time each step samples 5,000 random voxels, and different
 subjects have different voxels, so an in-batch contrastive term is only meaningful if every

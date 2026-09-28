@@ -19,7 +19,9 @@ if args.hub:
     torch.hub.set_dir(args.hub); sys.path.insert(0, os.path.join(args.hub, "facebookresearch_dinov2_main"))
 
 d = np.load(args.data)
-imgs, names = d["img_test"], [str(s) for s in d["test_names"]]
+imgs = d["img_test"]
+names = ([str(x) for x in d["test_names"]] if "test_names" in d.files
+         else [f"image_{i}" for i in range(len(imgs))])   # optional, only used as labels
 
 from ube.load import load_subject
 model = load_subject(args.enc, hub=args.hub, device=args.device, n_voxels=d["Y_test"].shape[1])

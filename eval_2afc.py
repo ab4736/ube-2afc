@@ -37,7 +37,10 @@ MEAN = np.array([0.485, 0.456, 0.406]).reshape(1, 1, 3)
 STD = np.array([0.229, 0.224, 0.225]).reshape(1, 1, 3)
 
 d = np.load(args.data)
-Y, pairs, names = d["Y_test"].astype(np.float32), d["pair_idx"], d["test_names"]
+Y, pairs = d["Y_test"].astype(np.float32), d["pair_idx"]
+# test_names is optional, it only labels the output csv
+names = ([str(x) for x in d["test_names"]] if "test_names" in d.files
+         else [f"image_{i}" for i in range(len(Y))])
 from ube.load import load_subject
 model = load_subject(args.enc, hub=args.hub, device=dev, n_voxels=d["Y_test"].shape[1],
                      base=args.base or None).eval()

@@ -79,6 +79,8 @@ p = encoder_param(NUM_VOXELS)
 p.inner_ch = args.inner_ch
 p.embed_dim_vox = args.embed_dim_vox
 p.drop_out = args.dropout
+p.in_channels = 1024        # dinov2 vit-l feature width, the class default is for a bigger backbone
+p.in_spatial = 257          # 16x16 patches at 224 plus the cls token
 dino = torch.hub.load("facebookresearch/dinov2", "dinov2_vitl14_reg", source="github", pretrained=True)
 for q in dino.parameters():
     q.requires_grad = False                                  # backbone stays frozen, lora adapts it

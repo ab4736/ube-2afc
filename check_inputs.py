@@ -9,8 +9,10 @@ import sys, hashlib
 import numpy as np
 
 path = sys.argv[1] if len(sys.argv) > 1 else None
-if path is None:
-    sys.exit("usage: python check_inputs.py data/<name>.npz")
+if path is None or path in ("-h", "--help"):
+    sys.exit("usage: python check_inputs.py data/<name>.npz\n\n"
+             "looks at an input file and says whether it is usable. prints ALL GOOD if it is,\n"
+             "or PROBLEM: lines explaining what to fix. run this before training.")
 
 problems, warnings = [], []
 try:
