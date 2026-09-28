@@ -360,11 +360,14 @@ out = scorer.score(b, shown="pair_3_1.jpg", foil="pair_3_2.jpg", z=False)
 print(out["cpd"], out["correct"])     # send out["cpd"] back as feedback
 ```
 
-A worked version of this loop is provided in `realtime/rtcloud_example.py`. The one component that
-must be supplied locally is the step that converts the volumes acquired so far into a single
-response estimate for the current trial, since this differs between acquisition setups. Fitting a
-causal GLM for that purpose performed considerably better than simply averaging the volumes within
-the response window, which in our testing performed close to chance.
+A skeleton of this loop is provided in `realtime/rtcloud_example.py`. It is deliberately not a
+runnable program, since it does not integrate with rt-cloud or any other acquisition system, and it
+leaves unimplemented the three functions that depend entirely on your setup: obtaining the next
+volume, converting the volumes acquired so far into a single response estimate for the current
+trial, and delivering feedback. What it does show is the order in which the scorer should be
+called. For the response estimate we recommend fitting a causal GLM, which performed considerably
+better than simply averaging the volumes within the response window, an approach that in our
+testing performed close to chance.
 
 Two observations about timing are worth noting. Scoring is best performed approximately six to nine
 seconds after stimulus onset, since accuracy peaked at around nine seconds and declined when
@@ -466,7 +469,7 @@ be ImageNet-normalised beforehand, since that is handled internally. It is worth
 | `ube/online.py` | the scorer you call from your own real time loop |
 | `ube/load.py` | builds the model and loads the weight files |
 | `ube/cache.py` | builds and reads the prediction cache |
-| `realtime/rtcloud_example.py` | template for a live scan loop |
+| `realtime/rtcloud_example.py` | skeleton showing how to call the scorer in a live loop, not runnable as is |
 | `extras/` | base pretraining, and notes on what worked and what did not |
 | `tools/export_base.py` | turns a big pickled encoder into the small weight files |
 | `models/`, `dinov2/` | model code, needed to load the encoder, do not edit |

@@ -4,14 +4,16 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
 from ube.online import PairmateScorer
 
-# template for scoring trials during a scan, for neurofeedback
+# SKELETON, NOT RUNNABLE AS IS. this file shows how to call the scorer from inside a real time
+# loop. it does not integrate with rt-cloud or any other acquisition system, and three functions
+# below are left unimplemented on purpose because they depend entirely on your setup:
+# get_trial_beta, wait_for_next_volume and send_feedback. running this file as written will stop
+# at the first of those.
 #
-# the shape of this is: before the scan you cache one predicted pattern per candidate image,
-# during the scan you turn the volumes collected so far into one beta per trial and hand it to
-# the scorer. the scorer is pure numpy and takes microseconds, so it is never the bottleneck
-#
-# the only part that depends on your setup is get_trial_beta below. every real time pipeline
-# already has something that does this, so plug yours in
+# what it is actually showing you is the order of the calls, which is: before the scan you cache
+# one predicted pattern per candidate image, and during the scan you turn the volumes collected
+# so far into one response estimate per trial and pass it to the scorer. the scoring itself is
+# pure numpy and takes microseconds, so it is never the part that limits you.
 
 CACHE = "cache/sub-08_preds.npz"          # made by make_pred_cache.py before the scan
 TR = 1.5                                  # seconds per volume
@@ -25,18 +27,21 @@ def get_trial_beta(volumes, onset_tr, mask, n_trs=CUT_TRS):
     onset_tr  which volume the trial started on
     mask      boolean 3d array picking the voxels the encoder was fit on, in the same order
 
-    replace this with whatever your pipeline does. two common options:
+    you have to implement this, because it is the part that differs between setups. what we
+    used, and what we recommend, is a causal glm: fit using only the volumes up to onset+n_trs,
+    with a boxcar regressor for this trial, the other trials as nuisance regressors, drift terms
+    and a canonical hrf, then take this trial's contrast as the response estimate.
+    nilearn.glm.first_level provides the pieces for this.
 
-    simple, no glm: average the volumes over the window and apply the mask. fast but noisier.
-    proper: fit a causal glm using only the volumes up to onset+n_trs, with a boxcar for this
-    trial, the other trials as nuisance regressors, drift terms and a canonical hrf, then take
-    this trial's contrast. nilearn.glm.first_level does this. that is what we used and it was
-    clearly better than averaging (averaging came out near chance on our data).
+    the obvious alternative, averaging the volumes across the window and applying the mask, is
+    much simpler but performed close to chance on our data, so we do not provide it here as a
+    default that could be copied by accident.
+
+    whatever you use, the vector it returns has to cover the same voxels, in the same order, as
+    the betas the encoder was fitted on.
     """
-    win = volumes[onset_tr:onset_tr + n_trs]
-    if not win:
-        raise ValueError("no volumes yet for this trial")
-    return np.stack([v[mask] for v in win]).mean(0)          # placeholder, see docstring
+    raise NotImplementedError(
+        "implement get_trial_beta for your acquisition setup, see the docstring above")
 
 
 def main():
