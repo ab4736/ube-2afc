@@ -10,10 +10,9 @@ repo for that.
 ## How it works
 
 Two pairmate images are almost the same picture, so the usual approach of decoding the brain data
-into CLIP features and asking which image it matches does not work. Both images have nearly the
-same CLIP vector, so the information is not there to decode.
+into CLIP features and asking which image it matches does not work well. Both images have decoded CLIP embedding that are hard to discriminate, due to information loss from the decoder being used.
 
-So we go the other direction. The encoder takes an image and predicts the brain pattern it should
+So, we go the other direction. The encoder takes an image and predicts the brain pattern it should
 produce. Predict a pattern for each of the two candidate images, then see which prediction the
 measured pattern actually looks like:
 
@@ -63,7 +62,7 @@ You need a Slurm cluster with one GPU, 16 GB or more.
 This repository contains scripts for
 
 - Building an input file from your data (`make_inputs.py`)
-- Checking that input file before you waste time on it (`check_inputs.py`)
+- Checking that input file before you spend time on it (`check_inputs.py`)
 - Fitting the encoder to your subject (`train_encoder.py`)
 - Scoring pairmate 2AFC and CPD (`eval_2afc.py`)
 - Caching predictions so trials can be scored instantly (`make_pred_cache.py`)
