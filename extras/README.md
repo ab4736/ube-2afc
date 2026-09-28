@@ -47,7 +47,7 @@ cd extras/nsd
 export UBE_NSD_DIR=/path/to/nsd_data/        # see the data section below
 export UBE_SAVE_DIR=/path/to/save/
 UBE_SMOKE=1 python train_encoder.py          # 3 batches, just checks it runs
-python train_encoder.py                      # the real thing, days on one gpu
+python train_encoder.py                      # the real run, hours on one gpu
 ```
 
 It writes a full pickled model into `UBE_SAVE_DIR`, which can be converted into the compact weight
