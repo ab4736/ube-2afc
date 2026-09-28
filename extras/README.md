@@ -4,30 +4,56 @@ Boilerplate from other things we tried. None of this is needed for a normal 2AFC
 here so you can build on it, and so the things that did not work are written down instead of
 being tried again.
 
-## train_base.py
+## pretraining the base on NSD
 
-Pretrains the base encoder on NSD from scratch. Needs the full NSD dataset and days of GPU
-time. See section 3 of HUGGINGFACE_UPLOAD.md for the data and the file layout it expects.
+Two options in here, and they are different on purpose.
 
+### nsd/ : the original training code
+
+`extras/nsd/train_encoder.py` is the Irani lab's own base training script, copied over
+essentially unchanged. The only edits are the import paths, reading the data and save
+directories from environment variables so it runs anywhere, and a smoke flag. This is the code
+that produced the reconstruction base we ship, so if you want to pretrain, start here.
+
+```bash
+cd extras/nsd
+export UBE_NSD_DIR=/path/to/nsd_data/        # see the data section below
+export UBE_SAVE_DIR=/path/to/save/
+UBE_SMOKE=1 python train_encoder.py          # 3 batches, just checks it runs
+python train_encoder.py                      # the real thing, days on one gpu
 ```
-python extras/train_base.py --data_dir /path/to/nsd_data --objective infonce --out mybase.pt
-python extras/train_base.py --data_dir /path/to/nsd_data --smoke --out /tmp/x.pt   # 3 steps, checks it runs
+
+It writes a full pickled model into `UBE_SAVE_DIR`. Convert it to the small format with
+`tools/export_base.py` if you want to share it or use it with `train_encoder.py --base`.
+
+Needs `tensorboardX` (in requirements.txt).
+
+### train_base_contrastive.py : our modified version
+
+This is the contrastive variant, and it is a separate script rather than a flag on theirs for a
+real reason. Their `EncDataset` samples a **different random set of 5,000 voxels for every
+item**, and batches mix subjects. A contrastive term compares the items in a batch against each
+other, so it is only meaningful if they are all in the same voxel space. Bolting one onto their
+loop would silently compare patterns across mismatched voxels.
+
+So this version builds batches differently: one subject per batch, one shared voxel sample per
+batch. Everything else (the model, the reconstruction loss, the augmentation) matches.
+
+```bash
+python extras/train_base_contrastive.py --data_dir /path/to/nsd_data --objective infonce --out mybase.pt
+python extras/train_base_contrastive.py --data_dir /path/to/nsd_data --smoke --out /tmp/x.pt
 ```
 
-`--objective recon` gives the plain reconstruction baseline, `--objective infonce` adds the
-contrastive term. Those two switches are the difference between the two base checkpoints we
-ship. It writes the same small weight format as the downloaded bases, so a base you train here
-drops straight into `train_encoder.py --base`.
+`--objective recon` gives a reconstruction run with the same batching, which is the matched
+control if you want to compare objectives. It writes the small weight format directly, so the
+output drops straight into `train_encoder.py --base`.
 
-The `--smoke` run above has been tested and works: it loads NSD, builds the model, takes 3 steps
-and saves a 9.6 MB checkpoint. A full run has **not** been done from this script, so treat the
-hyperparameters as a starting point rather than a recipe.
-
-One design note. At base training time each step samples 5,000 random voxels, and different
-subjects have different voxels, so an in-batch contrastive term is only meaningful if every
-item in the batch shares the same voxels and the same subject. This script builds batches that
-way. The exact batching used for the shipped checkpoint was not recorded, so if you retrain,
-keep your own recon and infonce runs matched and compare those to each other.
+Be aware of what is and is not verified here. The `--smoke` path is tested and works: it loads
+NSD, builds the model, takes 3 steps and saves a 9.6 MB checkpoint. **No base has been trained
+to completion with this script**, and the exact hyperparameters and batching used for the
+contrastive checkpoint we ship were never written down, so this reproduces the objective, not
+that specific checkpoint. If you retrain, keep your own recon and contrastive runs matched and
+compare those two to each other.
 
 ## what worked
 

@@ -329,10 +329,14 @@ that, skip this. Random init works fine.
 
 ## Pretraining the base yourself
 
-You do not need this. It takes the full NSD dataset and days of GPU time. If you want it,
-`extras/train_base.py` does it, with `--objective recon` or `--objective infonce` selecting the two
-objectives. `extras/README.md` explains what it needs and a batching detail that matters for the
-contrastive term.
+You do not need this. It takes the full NSD dataset and days of GPU time.
+
+`extras/nsd/` has the original Irani lab training script, copied over almost unchanged. That is
+the one to use if you want to pretrain a base the normal way.
+
+`extras/train_base_contrastive.py` is our modified version that adds the contrastive term. It is a
+separate script because the contrastive term needs batches where every item shares the same voxels
+and subject, which their data loader does not do. `extras/README.md` explains both.
 
 ## The input file format
 

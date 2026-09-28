@@ -7,3 +7,5 @@ pillow>=9.0
 nibabel>=5.0
 nilearn>=0.10
 pandas>=2.0
+# only needed for extras/nsd/train_encoder.py (base pretraining)
+tensorboardX>=2.6
