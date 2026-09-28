@@ -57,32 +57,31 @@ compare those two to each other.
 
 ## what worked
 
-- **The contrastive (InfoNCE + entropy) pretraining objective.** Won on 8 of 8 NSD subjects
-  (2AFC 0.870 to 0.954, retrieval 0.356 to 0.695). On sub-06, fine-tuning from it took 2AFC
-  from 0.808 to 0.923. This is the main win and it is the default.
-- **Warm starting a new subject's voxel embeddings** from the nearest NSD voxel instead of
+- The contrastive (InfoNCE + entropy) pretraining objective. It beat the reconstruction-only
+  base on every NSD subject we tried, and on our own subject too, on both forced choice and
+  retrieval. This is the main win and it is the default.
+- Warm starting a new subject's voxel embeddings from the nearest NSD voxel instead of
   random init. Helped on sub-005. Needs a voxel correspondence you have to build yourself, see
   the warm start section of the main README.
-- **Scoring at 6 to 9 s after onset** for the real time case, and not widening the window.
+- Scoring at 6 to 9 s after onset for the real time case, and not widening the window.
 
 ## what did not work
 
 Written down so nobody burns a week on them again.
 
 - **Hard negative batch mining with a DINOv2 teacher** (the "Breaking the Batch Barrier" idea).
-  Batches were verifiably about 10x harder in teacher space and it still did nothing:
-  0.0079 *below* random batching over 8 seeds. Mining in **voxel space** instead was slightly
-  positive (+0.0087, 6 of 8 seeds) but it does not survive a correction for the three variants
-  tested, so treat it as unproven, not as a result.
-- **Continuous per-voxel reliability weighting** instead of a binary reliability mask. Exactly
-  zero effect over 3 seeds, despite the reliability values being genuinely spread out. The
-  weighting reallocates the loss without changing what the model learns to tell apart.
-- **Reinforcement learning / evolution strategies** on top of the contrastive objective. Reward
-  saturated, no gain over InfoNCE.
-- **Brain-JEPA style masking** (gradient-position init, cluster and predicted masking). Neutral.
-- **Warm starting from a z-prior.** Failed, the session shift is too large.
-- **Decoding into CLIP space to tell pairmates apart.** This is the obvious thing to try and it
-  is much worse than the encoder direction: 0.71 for a real CLIP decoder vs 0.935 for the
-  encoder on the same trials. Pairmates collapse to nearly the same CLIP vector, so the
-  information is not there to decode. Low level (VGG) features do better than CLIP (0.81) but
-  still lose to the encoder.
+  The batches really were much harder in teacher space, we checked, and it still did nothing:
+  slightly worse than random batching across seeds. Mining in voxel space instead was slightly
+  positive but it does not survive a correction for the number of variants tried, so treat it as
+  unproven rather than a result.
+- Continuous per-voxel reliability weighting instead of a binary reliability mask. No effect at
+  all, even though the reliability values were genuinely spread out. It reallocates the loss
+  without changing what the model learns to tell apart.
+- Reinforcement learning and evolution strategies on top of the contrastive objective. Reward
+  saturated, no gain.
+- Brain-JEPA style masking (gradient-position init, cluster and predicted masking). Neutral.
+- Warm starting from a z-prior. Failed, the session shift is too large.
+- Decoding into CLIP space to tell pairmates apart. This is the obvious thing to try and it is
+  clearly worse than going through the encoder, on the same trials. Pairmates collapse to nearly
+  the same CLIP vector, so the information is not there to decode. Low level (VGG) features do
+  better than CLIP but still lose to the encoder.

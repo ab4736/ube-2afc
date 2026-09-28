@@ -3,7 +3,12 @@
 Can you tell, from someone's brain response alone, which of two near-identical images they were
 looking at? This runs that test on your own data, offline or live during a scan.
 
-Built on the Universal Brain Encoder (UBE), [Beliy et al.](https://arxiv.org/abs/2406.12179).
+Built on the Universal Brain Encoder (UBE), [Beliy et al.](https://arxiv.org/abs/2406.12179). The
+encoder itself comes from the Irani lab, their code is at
+[WeizmannVision/brainit-fmri](https://github.com/WeizmannVision/brainit-fmri) if you want to look
+at it. What is here is the pairmate side: the forced choice and CPD scoring, fitting the encoder to
+a new subject, and running it live during a scan. Image reconstruction is not in here, use their
+repo for that.
 
 ## How it works
 
@@ -22,22 +27,6 @@ correct if corr(measured beta, pred_A) > corr(measured beta, pred_B)
 ```
 
 Chance is 0.50. Nothing is ever reconstructed, which is why this works where decoding fails.
-
-## What this adds on top of UBE
-
-The encoder architecture and the base pretraining are from the Irani lab. This repo adds:
-
-- **The pairmate measurement.** Forced choice, CPD, retrieval, bootstrap confidence intervals, and
-  leak controls. Their repo evaluates reconstruction quality and encoding accuracy, not this.
-- **CPD during a scan.** Predictions are cached ahead of time so scoring a trial is two
-  correlations and a projection, fast enough for a neurofeedback loop.
-- **Fitting a new subject quickly.** Freeze the base, train only the per-voxel embeddings, about 20
-  minutes on one GPU with a couple thousand images. Their code assumes NSD-scale data.
-- **A pretraining objective that helps.** Adding a contrastive (InfoNCE + entropy) term to the base
-  won on 8 of 8 NSD subjects (2AFC 0.870 to 0.954). Both bases are provided so you can compare.
-
-Image reconstruction is not in here. If you want to reconstruct images from brain activity, use the
-Brain-IT decoder in their repo.
 
 ## Installation instructions
 
@@ -66,7 +55,7 @@ file you edit.
 ./download_checkpoints.sh
 ```
 
-5. Cache the DINOv2 backbone. Run this on a **login node**, because compute nodes usually have no
+5. Cache the DINOv2 backbone. Run this on a login node, because compute nodes usually have no
 internet:
 
 ```bash
@@ -95,8 +84,7 @@ not, so nobody repeats the dead ends.
 
 You can skip pretraining entirely. `download_checkpoints.sh` fetches these:
 
-- `ube_base_infonce.pt`: pretrained with the contrastive objective. **This is the default and the
-  one to use.**
+- `ube_base_infonce.pt`: pretrained with the contrastive objective. this is the default and the one to use.
 - `ube_base_recon.pt`: same architecture and data, reconstruction loss only. The matched baseline
   if you want to compare objectives.
 - `ube_base_original.pt`: the earlier base this work started from.
@@ -202,8 +190,7 @@ $PY train_encoder.py --data data/sub-08.npz --tag sub-08_infonce \
 - Set `--lam 0 --went 0` for a plain reconstruction encoder, if you want the comparison.
 - The saved file is a few MB, not 1.2 GB, because it stores the voxel embeddings and a pointer to
   which base they belong to.
-- Runs are reproducible: the same `--seed` on the same input file gives the same numbers. Our
-  reference subject comes out at 0.923 every time.
+- Runs are reproducible: the same `--seed` on the same input file gives the same numbers.
 
 ```
 $ python train_encoder.py --help
@@ -235,26 +222,26 @@ options:
 $PY eval_2afc.py --data data/sub-08.npz --enc checkpoints/sub-08_infonce.pth
 ```
 
-It prints:
+It prints one block like this, with your numbers in place of the Xs:
 
 ```
-  pairmate 2AFC   0.923  (24/26)  95% CI [0.81, 1.00]  chance 0.5
-  CPD             mean +0.507  median +0.498  CPD>0 0.923
-  retrieval       top-1 0.808  (1 of 26, chance 0.038)
-  val retrieval   top-1 0.386  (1 of 233, chance 0.004)
-  controls        shuffled_voxels 0.58  mean_beta 0.50  wrong_image 0.15
+  pairmate 2AFC   0.XXX  (nn/NN)  95% CI [0.XX, 0.XX]  chance 0.5
+  CPD             mean +0.XXX  median +0.XXX  CPD>0 0.XXX
+  retrieval       top-1 0.XXX  (1 of NN, chance 0.0XX)
+  val retrieval   top-1 0.XXX  (1 of NNN, chance 0.00X)
+  controls        shuffled_voxels 0.5X  mean_beta 0.50  wrong_image 0.1X
 ```
 
-- **pairmate 2AFC** is the main number. Fraction of trials where the measured pattern matched the
+- pairmate 2AFC is the main number. Fraction of trials where the measured pattern matched the
   shown image's prediction better than its pairmate's. Each pair gives two trials, once with each
   image shown. The confidence interval resamples pairs.
-- **CPD** projects the measured pattern onto the line between the two predictions. +1 means it sits
+- CPD projects the measured pattern onto the line between the two predictions. +1 means it sits
   right on the shown image's prediction, 0 is halfway, -1 is on the pairmate's.
-- **retrieval** is a harder version: each measured pattern against the predictions for all the test
+- retrieval is a harder version: each measured pattern against the predictions for all the test
   images, not just its pairmate.
-- **val retrieval** is the same thing on ordinary non-pairmate images, and it is the health check.
+- val retrieval is the same thing on ordinary non-pairmate images, and it is the health check.
   If this is near chance the encoder did not fit your subject, and the 2AFC number means nothing.
-- **controls** should all land near 0.50 (`wrong_image` can go below). `shuffled_voxels` scrambles
+- controls should all land near 0.50 (`wrong_image` can go below). `shuffled_voxels` scrambles
   the predictions, `mean_beta` uses the average pattern instead of the real one, and `wrong_image`
   uses some other scene's prediction. If any of these come out high, something is leaking and the
   result is not real.
@@ -266,7 +253,7 @@ it was correct, and the CPD. It opens in Excel.
 
 Two parts. The first is useful on its own if you just want per-trial numbers after a session.
 
-**Before the scan, cache the predictions.** `submit.sh` already did this. It runs the encoder once
+Before the scan, cache the predictions. `submit.sh` already did this. It runs the encoder once
 per candidate image and saves the results, so at trial time there is no GPU work left.
 
 ```bash
@@ -274,7 +261,7 @@ $PY make_pred_cache.py --data data/sub-08.npz --enc checkpoints/sub-08_infonce.p
     --out cache/sub-08_preds.npz
 ```
 
-**Score trials from a finished session.** `shown_foil.csv` has columns `shown,foil`, one line per
+Scoring trials from a finished session. `shown_foil.csv` has columns `shown,foil`, one line per
 trial, matching the rows of your betas. Add `--causal_z` to normalise using only the trials seen so
 far, which is the honest thing to do if you are imitating online conditions.
 
@@ -283,7 +270,7 @@ $PY score_trials.py --cache cache/sub-08_preds.npz --betas trial_betas.npy \
     --trials shown_foil.csv --out results/pertrial.csv
 ```
 
-**Score trials live.** Use the scorer directly in your own scanner loop. It is pure numpy, no GPU,
+Scoring trials live. Use the scorer directly in your own scanner loop. It is pure numpy, no GPU,
 so it takes microseconds and is never the bottleneck:
 
 ```python

@@ -66,7 +66,7 @@ def main():
 # 1. score at about 6 to 9 s after onset. accuracy peaked at 9 s and waiting longer made it
 #    worse, because you start averaging in the falling part of the response
 # 2. do not widen the window to decode earlier. a wide window has to include pre response
-#    volumes, which delays it. narrow windows crossed 0.9 sooner
+#    volumes, which delays it. narrow windows got there sooner
 
 
 def wait_for_next_volume():
