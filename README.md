@@ -1,20 +1,27 @@
 # ube-2afc: pairmate discrimination from fMRI
 
-Built on the Universal Brain Encoder (UBE), [Beliy et al.](https://arxiv.org/abs/2406.12179). The
-encoder itself comes from the Irani lab, their code is at
-[WeizmannVision/brainit-fmri](https://github.com/WeizmannVision/brainit-fmri) if you want to look
-at it. What is here is the pairmate side: the forced choice and CPD scoring, fitting the encoder to
-a new subject, and running it live during a scan. Image reconstruction is not in here, use their
-repo for that.
+This repository provides code for testing whether a person's measured fMRI response can be used to
+determine which of two near-identical images they were viewing. It supports both offline analysis
+of a completed dataset and online scoring during an ongoing scan.
+
+The encoder it is built on is the Universal Brain Encoder (UBE) from the Irani lab, described in
+[Beliy et al.](https://arxiv.org/abs/2406.12179), whose code is available at
+[WeizmannVision/brainit-fmri](https://github.com/WeizmannVision/brainit-fmri). What this repository
+adds is the pairmate side of the analysis: the forced-choice and CPD scoring, the procedure for
+fitting the encoder to a new subject, and the machinery for running the scoring live during
+acquisition. Image reconstruction is not included here, and their repository should be used for
+that purpose.
 
 ## How it works
 
 Two pairmate images are almost the same picture, so the usual approach of decoding the brain data
-into CLIP features and asking which image it matches does not work well. Both images have decoded CLIP embedding that are hard to discriminate, due to information loss from the decoder being used.
+into CLIP features and asking which image it matches does not work well. Both images have decoded
+CLIP embeddings that are hard to discriminate, due to information loss from the decoder being used.
 
-So, we go the other direction. The encoder takes an image and predicts the brain pattern it should
-produce. Predict a pattern for each of the two candidate images, then see which prediction the
-measured pattern actually looks like:
+This implementation therefore works in the opposite direction. Rather than decoding the measured
+response into image features, it uses the encoder to predict, for each of the two candidate images,
+the brain pattern that image should have produced. The trial is then scored by asking which of the
+two predicted patterns the measured pattern more closely resembles.
 
 ```
 pred_A = encoder(image A)
@@ -22,7 +29,8 @@ pred_B = encoder(image B)
 correct if corr(measured beta, pred_A) > corr(measured beta, pred_B)
 ```
 
-Chance is 0.50. Nothing is ever reconstructed, which is why this works where decoding fails.
+Chance performance is 0.50. Because the image is never reconstructed, the comparison does not
+depend on recovering image content that the two pairmates share.
 
 ## Installation instructions
 
@@ -41,9 +49,10 @@ conda activate ube
 pip install -r requirements.txt
 ```
 
-3. Open `config.sh` and fill in the top: the path to that Python, and your Slurm account and
-partition if your cluster needs them. Nothing else in the repo holds a path, so this is the only
-file you edit.
+3. Open `config.sh` and fill in the settings at the top, which are the path to the Python
+interpreter you just created and, if your cluster requires them, your Slurm account and partition.
+No other file in the repository contains a machine-specific path, so this is the only file that
+needs to be edited for a new cluster.
 
 4. Download the pretrained weights:
 
@@ -51,52 +60,59 @@ file you edit.
 ./download_checkpoints.sh
 ```
 
-That gets the encoder weights (about 10 MB each) and the DINOv2 backbone (1.2 GB). After this the
-code never needs the internet again, which matters because most clusters block it on compute
-nodes. If the repo is private you will need to `huggingface-cli login` first.
+This retrieves the encoder weights, which are roughly 10 MB each, along with the DINOv2 backbone,
+which is 1.2 GB. Once these are in place the code does not require network access again, which
+matters because compute nodes on most clusters cannot reach the internet. If the HuggingFace
+repository has been made private, you will need to run `huggingface-cli login` before downloading.
 
-You need a Slurm cluster with one GPU, 16 GB or more.
+Running the analysis requires a Slurm cluster with one GPU of 16 GB or more.
 
 ## General information
 
 This repository contains scripts for
 
 - Building an input file from your data (`make_inputs.py`)
-- Checking that input file before you spend time on it (`check_inputs.py`)
+- Checking that input file before spending time on a training run (`check_inputs.py`)
 - Fitting the encoder to your subject (`train_encoder.py`)
 - Scoring pairmate 2AFC and CPD (`eval_2afc.py`)
-- Caching predictions so trials can be scored instantly (`make_pred_cache.py`)
-- Scoring trials one at a time, after a session or during one (`score_trials.py`, `ube/online.py`)
+- Caching predictions so that trials can be scored immediately (`make_pred_cache.py`)
+- Scoring trials individually, either after a session or during one (`score_trials.py`,
+  `ube/online.py`)
 
-`./submit.sh NAME` runs the middle four in order as one Slurm job, which is what most people want.
+For most purposes it is sufficient to run `./submit.sh NAME`, which executes the middle four steps
+in order as a single Slurm job.
 
-`extras/` has base pretraining from scratch, plus written-down notes on what worked and what did
-not, so nobody repeats the dead ends.
+The `extras/` directory contains the code for pretraining a base encoder from scratch, together
+with notes recording which methodological variations improved performance and which did not.
 
 ## Pretrained models
 
-You can skip pretraining entirely. `download_checkpoints.sh` fetches these:
+Pretraining can be skipped entirely, since `download_checkpoints.sh` retrieves the following
+pretrained bases:
 
-- `ube_base_infonce.pt`: pretrained with the contrastive objective. this is the default and the one to use.
-- `ube_base_recon.pt`: same architecture and data, reconstruction loss only. The matched baseline
-  if you want to compare objectives.
-- `ube_base_original.pt`: the earlier base this work started from.
+- `ube_base_infonce.pt` was pretrained with the contrastive objective, and is the default and the
+  one that should normally be used.
+- `ube_base_recon.pt` uses the same architecture and training data but a reconstruction loss alone,
+  and is provided as a matched baseline for anyone wishing to compare the two objectives.
+- `ube_base_original.pt` is the earlier base from which this work started.
 
-Switch between them with the `BASE=` line in `config.sh`. They are small because the DINOv2
-backbone is not inside them; it is stock and gets loaded separately.
+The base can be changed using the `BASE=` line in `config.sh`. These files are small because the
+DINOv2 backbone is not stored inside them; the backbone is unmodified and is loaded separately.
 
 ## Preparing your data
 
-You need three files plus your images.
+Three files are required, along with the images themselves.
 
-**The betas.** One row per trial, one column per voxel. Apply your mask first so only the voxels
-you want are in there. Single-trial betas are fine, repeats get averaged for you. Save from Python
-with `np.save("betas.npy", betas)`, or from MATLAB with `save('betas.mat','betas','-v7')` with only
-that one variable in the file.
+The first is a matrix of betas, with one row per trial and one column per voxel. Any masking should
+be applied beforehand so that only the voxels of interest are included. Single-trial betas are
+acceptable, as repeated presentations of the same image are averaged automatically. The matrix can
+be saved from Python using `np.save("betas.npy", betas)`, or from MATLAB using
+`save('betas.mat','betas','-v7')`, provided that the file contains only that one variable.
 
-**`trials.csv`.** One line per row of the betas, in the same order, saying which image was on
-screen. Needs an `image` column. A `session` column is optional but recommended, since then each
-voxel is z-scored within session.
+The second is `trials.csv`, which records which image was presented on each trial. It must contain
+one line per row of the beta matrix, in the same order, and must include a column named `image`. A
+`session` column is optional but recommended, because when it is present each voxel is z-scored
+within session, which removes session-level scaling differences.
 
 ```
 image,session
@@ -107,7 +123,8 @@ scene_1023.png,2
 pair_3_2.jpg,2
 ```
 
-**`pairs.csv`.** One line per pairmate pair. Names must match `trials.csv` exactly.
+The third is `pairs.csv`, which lists the pairmate pairs, one per line. The image names must match
+those in `trials.csv` exactly.
 
 ```
 image_a,image_b
@@ -115,17 +132,18 @@ pair_3_1.jpg,pair_3_2.jpg
 pair_4_1.jpg,pair_4_2.jpg
 ```
 
-The pairmate images become the test set and are taken out of training automatically, so the encoder
-never sees them.
+The images listed in `pairs.csv` become the test set, and they are removed from the training set
+automatically, so the encoder is never exposed to them during fitting.
 
-**The images.** Normal .jpg or .png, any size. They get resized to 224x224, and stretched if not
-square, which is fine.
+The images themselves can be ordinary .jpg or .png files of any size. They are resized to 224x224
+during preparation, and non-square images are stretched rather than cropped.
 
-Every image that is not a pairmate gets used for training, so more is better. Around 2,000 works
-well. Below roughly 1,000 it still runs but fits worse.
+Every image that is not a pairmate is used for training, so a larger stimulus set generally
+produces a better fit. Roughly 2,000 images works well. Fewer than about 1,000 will still run, but
+the encoder will fit the subject less accurately.
 
-Then build the input file. Set `--name` to whatever you want to call this dataset, usually a
-subject ID. Leave out `--images` if `trials.csv` already has full paths.
+The input file is then built as follows, where `--name` is an identifier for the dataset, typically
+a subject ID. The `--images` argument can be omitted if `trials.csv` already contains full paths.
 
 ```bash
 . ./config.sh
@@ -148,14 +166,18 @@ options:
   --seed SEED          random seed for the train/val split
 ```
 
-Then check it. This takes seconds and catches the mistakes that otherwise cost you a queue wait:
+The resulting file should then be checked. This takes only a few seconds and identifies the kinds
+of formatting problems that would otherwise only become apparent after waiting in the queue for a
+training job.
 
 ```bash
 $PY check_inputs.py data/sub-08.npz
 ```
 
-It prints how many images and voxels it found. `ALL GOOD` on the last line means you are fine. A
-`PROBLEM:` line says exactly what to fix. `warning:` lines still run.
+The check reports how many images and voxels were found. A final line reading `ALL GOOD` indicates
+that the file is usable. Any line beginning with `PROBLEM:` describes something that must be
+corrected before proceeding, whereas lines beginning with `warning:` describe conditions that are
+worth knowing about but do not prevent the analysis from running.
 
 ## Running the whole thing
 
@@ -163,27 +185,33 @@ It prints how many images and voxels it found. `ALL GOOD` on the last line means
 ./submit.sh sub-08
 ```
 
-That queues one job which checks the inputs, fits the encoder (about 20 min), scores 2AFC and CPD,
-and builds the prediction cache for online use. Watch it with `squeue -u $USER` and
+This queues a single job that checks the input file, fits the encoder to the subject, which takes
+approximately twenty minutes, scores 2AFC and CPD, and builds the prediction cache used for online
+scoring. Job status can be checked with `squeue -u $USER`, and progress can be followed with
 `tail -f logs/ube_2afc_*.log`.
 
-The rest of this section is what that job runs, if you want to do the steps yourself.
+The sections below describe the individual steps that this job performs, for cases where they need
+to be run separately.
 
 ## Fitting the encoder to your subject
 
-The base stays frozen. The only thing trained is one embedding vector per voxel of your subject,
-which is why this is fast and works with a couple thousand images.
+During fitting the pretrained base remains frozen, and the only parameters that are trained are the
+per-voxel embeddings for the subject, one vector per voxel. Because the number of trained
+parameters is small, fitting is fast and does not require a large stimulus set.
 
 ```bash
 $PY train_encoder.py --data data/sub-08.npz --tag sub-08_infonce \
     --base checkpoints/ube_base_infonce.pt --lam 1 --went 0.1
 ```
 
-- Set `--lam 1 --went 0.1` for the contrastive objective. This is the one that helps pairmates.
-- Set `--lam 0 --went 0` for a plain reconstruction encoder, if you want the comparison.
-- The saved file is a few MB, not 1.2 GB, because it stores the voxel embeddings and a pointer to
-  which base they belong to.
-- Runs are reproducible: the same `--seed` on the same input file gives the same numbers.
+- Setting `--lam 1 --went 0.1` enables the contrastive objective, which is the configuration that
+  improves pairmate discrimination.
+- Setting `--lam 0 --went 0` trains a plain reconstruction encoder, which is useful if you want to
+  compare the two objectives directly.
+- The resulting file is a few megabytes rather than 1.2 GB, because it stores only the voxel
+  embeddings together with a reference to the base they were trained against.
+- Fitting is reproducible, in that the same `--seed` applied to the same input file will produce
+  identical results.
 
 ```
 $ python train_encoder.py --help
@@ -215,7 +243,8 @@ options:
 $PY eval_2afc.py --data data/sub-08.npz --enc checkpoints/sub-08_infonce.pth
 ```
 
-It prints one block like this, with your numbers in place of the Xs:
+The evaluation prints a single summary block in the following form, with your own values in place
+of the Xs:
 
 ```
   pairmate 2AFC   0.XXX  (nn/NN)  95% CI [0.XX, 0.XX]  chance 0.5
@@ -225,46 +254,57 @@ It prints one block like this, with your numbers in place of the Xs:
   controls        shuffled_voxels 0.5X  mean_beta 0.50  wrong_image 0.1X
 ```
 
-- pairmate 2AFC is the main number. Fraction of trials where the measured pattern matched the
-  shown image's prediction better than its pairmate's. Each pair gives two trials, once with each
-  image shown. The confidence interval resamples pairs.
-- CPD projects the measured pattern onto the line between the two predictions. +1 means it sits
-  right on the shown image's prediction, 0 is halfway, -1 is on the pairmate's.
-- retrieval is a harder version: each measured pattern against the predictions for all the test
-  images, not just its pairmate.
-- val retrieval is the same thing on ordinary non-pairmate images, and it is the health check.
-  If this is near chance the encoder did not fit your subject, and the 2AFC number means nothing.
-- controls should all land near 0.50 (`wrong_image` can go below). `shuffled_voxels` scrambles
-  the predictions, `mean_beta` uses the average pattern instead of the real one, and `wrong_image`
-  uses some other scene's prediction. If any of these come out high, something is leaking and the
-  result is not real.
+- Pairmate 2AFC is the primary measure. It reports the proportion of trials on which the measured
+  pattern was more similar to the prediction for the image that was shown than to the prediction
+  for its pairmate. Each pair contributes two trials, one with each image treated as the presented
+  image. The confidence interval is obtained by resampling pairs.
+- CPD is the signed projection of the measured pattern onto the line joining the two predictions. A
+  value of +1 indicates that the measured pattern lies exactly on the prediction for the presented
+  image, 0 indicates that it lies midway between the two, and -1 indicates that it lies on the
+  prediction for the pairmate.
+- Retrieval is a more demanding version of the same comparison, in which each measured pattern is
+  compared against the predictions for all test images rather than against its pairmate alone.
+- Validation retrieval applies the same procedure to ordinary non-pairmate images, and serves as a
+  check on the fit. If it is close to chance, the encoder has not fit the subject, and the 2AFC
+  value should not be interpreted.
+- The control measures should all fall near 0.50, although `wrong_image` may fall below it. The
+  `shuffled_voxels` control permutes the voxels of the predictions, `mean_beta` replaces the
+  measured pattern with the average pattern across trials, and `wrong_image` substitutes the
+  prediction for an unrelated scene. Elevated values on any of these indicate that information is
+  leaking into the comparison and that the result is not trustworthy.
 
-You also get `results/sub-08_infonce_trials.csv`, one row per trial with both correlations, whether
-it was correct, and the CPD. It opens in Excel.
+The evaluation also writes `results/sub-08_infonce_trials.csv`, which contains one row per trial
+recording both correlations, whether the trial was scored correct, and the CPD value, in a form
+that can be opened directly in a spreadsheet program.
 
 ## Scoring trials as they happen (neurofeedback)
 
-Two parts. The first is useful on its own if you just want per-trial numbers after a session.
+Online use has two components, the first of which is also useful on its own for obtaining per-trial
+values after a session has finished.
 
-Before the scan, cache the predictions. `submit.sh` already did this. It runs the encoder once
-per candidate image and saves the results, so at trial time there is no GPU work left.
+The first component is the prediction cache, which is built before the scan and is produced
+automatically by `submit.sh`. It runs the encoder once for each candidate image and stores the
+resulting predicted patterns, so that no GPU computation is required while the scan is running.
 
 ```bash
 $PY make_pred_cache.py --data data/sub-08.npz --enc checkpoints/sub-08_infonce.pth \
     --out cache/sub-08_preds.npz
 ```
 
-Scoring trials from a finished session. `shown_foil.csv` has columns `shown,foil`, one line per
-trial, matching the rows of your betas. Add `--causal_z` to normalise using only the trials seen so
-far, which is the honest thing to do if you are imitating online conditions.
+The second component is the per-trial scoring itself. For a session that has already finished,
+`score_trials.py` scores each trial in turn, where `shown_foil.csv` contains the columns `shown`
+and `foil`, one line per trial, in the same order as the rows of the beta matrix. Passing
+`--causal_z` normalises each trial using only the trials observed up to that point, which is the
+appropriate choice when reproducing the conditions of an online analysis.
 
 ```bash
 $PY score_trials.py --cache cache/sub-08_preds.npz --betas trial_betas.npy \
     --trials shown_foil.csv --out results/pertrial.csv
 ```
 
-Scoring trials live. Use the scorer directly in your own scanner loop. It is pure numpy, no GPU,
-so it takes microseconds and is never the bottleneck:
+For live use, the scorer can be called directly from within an existing acquisition loop. It is
+implemented in pure numpy and requires no GPU, so the time it takes is negligible relative to
+acquisition.
 
 ```python
 from ube.online import PairmateScorer
@@ -276,24 +316,28 @@ out = scorer.score(b, shown="pair_3_1.jpg", foil="pair_3_2.jpg", z=False)
 print(out["cpd"], out["correct"])     # send out["cpd"] back as feedback
 ```
 
-`realtime/rtcloud_example.py` is a filled-in template of that loop. The one part you supply is
-turning the volumes collected so far into one beta for the current trial, because every real time
-setup does that differently. A proper causal GLM works clearly better than averaging the volumes in
-the window; on our data averaging came out near chance.
+A worked version of this loop is provided in `realtime/rtcloud_example.py`. The one component that
+must be supplied locally is the step that converts the volumes acquired so far into a single beta
+for the current trial, since this differs between acquisition setups. Fitting a causal GLM for this
+purpose performs considerably better than simply averaging the volumes within the response window,
+which in our testing performed close to chance.
 
-Two things we measured that matter for timing:
+Two further observations about timing are worth noting. Scoring is best performed approximately six
+to nine seconds after stimulus onset, since accuracy peaked at around nine seconds and declined
+when scoring was delayed further. Widening the window does not allow earlier decoding, because a
+wider window necessarily incorporates volumes acquired before the response has developed, which
+delays rather than advances the point at which the measure becomes informative.
 
-- Score at about 6 to 9 s after onset. Accuracy peaked at 9 s and waiting longer made it worse.
-- Do not widen the window to try to decode earlier. A wide window has to include pre-response
-  volumes, which delays it.
-
-One caveat on CPD online: 2AFC does not care how your betas are scaled, but CPD does. If you change
-how you normalise, CPD values shift, so only compare CPD computed the same way.
+One caveat applies specifically to CPD in the online setting. The 2AFC measure is insensitive to
+the overall scaling of the betas, whereas CPD is not, so changing the normalisation scheme shifts
+the CPD values. CPD values should therefore only be compared across analyses that used the same
+normalisation.
 
 ## Warm starting (optional)
 
-By default a new subject's voxel embeddings start random. You can instead start each voxel from the
-most similar NSD voxel, which helped on one of our subjects:
+By default the voxel embeddings for a new subject are initialised randomly. They can instead be
+initialised from the embedding of the most similar NSD voxel, which improved the fit for one of our
+subjects.
 
 ```bash
 WITH_WARMSTART=1 ./download_checkpoints.sh      # adds a 324 MB file
@@ -302,31 +346,35 @@ $PY train_encoder.py --data data/sub-08.npz --tag sub-08_warm \
     --warm_embed checkpoints/nsd_voxel_embed_infonce.pt --warm_map my_voxel_to_nsd.npy
 ```
 
-You have to build `my_voxel_to_nsd.npy` yourself: an integer array, one entry per voxel of your
-subject, giving the index of the NSD voxel it corresponds to. That means putting your voxels and
-the NSD voxels in a common space (fsaverage) and taking nearest neighbours. If you do not have
-that, skip this. Random init works fine.
+Using this option requires constructing `my_voxel_to_nsd.npy`, an integer array with one entry per
+voxel of the subject giving the index of the corresponding NSD voxel. Producing it requires
+bringing the subject's voxels and the NSD voxels into a common space, such as fsaverage, and taking
+nearest neighbours. If such a correspondence is not available, this option can be skipped, as
+random initialisation performs adequately.
 
 ## Pretraining the base yourself
 
-You do not need this. It takes the full NSD dataset and hours of GPU time. If you do want it, the
-preprocessed NSD data is on hugging face too:
+Pretraining is not necessary for running the analysis, and it requires the full NSD dataset as well
+as a substantial amount of GPU time. For those who do want to carry it out, the preprocessed NSD
+data is available from the same HuggingFace repository:
 
 ```bash
 WITH_NSD=1 ./download_checkpoints.sh      # 17 GB, and it is NSD data, so their terms apply
 ```
 
-`extras/nsd/` has the original Irani lab training script, copied over almost unchanged. That is
-the one to use if you want to pretrain a base the normal way.
+The directory `extras/nsd/` contains the original Irani lab training script, reproduced with only
+minimal changes, and is the appropriate starting point for conventional pretraining.
 
-`extras/train_base_contrastive.py` is our modified version that adds the contrastive term. It is a
-separate script because the contrastive term needs batches where every item shares the same voxels
-and subject, which their data loader does not do. `extras/README.md` explains both.
+The script `extras/train_base_contrastive.py` is a modified version that adds the contrastive term.
+It is provided as a separate script rather than as an option on the original because the
+contrastive term requires batches in which every item shares the same sampled voxels and the same
+subject, a condition that the original data loader does not satisfy. Both are described in
+`extras/README.md`.
 
 ## The input file format
 
-If you would rather build `data/NAME.npz` yourself instead of using `make_inputs.py`, it is a numpy
-`.npz` with these arrays:
+If you prefer to construct `data/NAME.npz` directly rather than using `make_inputs.py`, it is a
+numpy `.npz` archive containing the following arrays:
 
 | key | shape | what |
 |---|---|---|
@@ -339,8 +387,9 @@ If you would rather build `data/NAME.npz` yourself instead of using `make_inputs
 | `pair_idx` | (n_pairs, 2) int | which rows of `Y_test` are pairmates |
 | `test_names` | (n_test,) str | image names, used in the output csv |
 
-Same voxels in the same order in all three `Y_` arrays. Do not ImageNet-normalise the images, the
-code does that. Run `check_inputs.py` on it before training.
+The same voxels must appear in the same order in all three `Y_` arrays. The images should not be
+ImageNet-normalised beforehand, as this is handled internally. It is worth running
+`check_inputs.py` on any file constructed this way before beginning training.
 
 ## If something goes wrong
 

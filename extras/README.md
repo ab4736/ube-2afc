@@ -1,19 +1,46 @@
 # extras
 
-Boilerplate from other things we tried. None of this is needed for a normal 2AFC test. It is
-here so you can build on it, and so the things that did not work are written down instead of
-being tried again.
+This directory contains the code for pretraining a base encoder on NSD from scratch, which is not
+required in order to run a pairmate analysis and is included for anyone who wants to reproduce or
+modify the pretraining itself. Pretraining requires the full NSD dataset and a substantial amount
+of GPU time, whereas the pretrained bases can simply be downloaded, so most users will not need
+anything in here.
 
-## pretraining the base on NSD
+## What the contrastive objective is, and why it is the default
 
-Two options in here, and they are different on purpose.
+The base encoder can be trained in either of two ways, and the difference between them is the main
+methodological point of this repository.
 
-### nsd/ : the original training code
+The original objective is reconstruction. For each image the encoder predicts a brain pattern, and
+training minimises the difference between that prediction and the measured pattern, so the encoder
+is rewarded for producing predictions that are accurate in an absolute sense. This works well, but
+it does not explicitly ask the encoder to make the prediction for one image distinguishable from
+the prediction for a different image, which is precisely what a pairmate comparison depends on.
 
-`extras/nsd/train_encoder.py` is the Irani lab's own base training script, copied over
-essentially unchanged. The only edits are the import paths, reading the data and save
-directories from environment variables so it runs anywhere, and a smoke flag. This is the code
-that produced the reconstruction base we ship, so if you want to pretrain, start here.
+The contrastive objective adds a second requirement on top of the reconstruction loss. Within each
+training batch, the prediction for a given image must match that image's own measured pattern more
+closely than it matches the measured pattern of any other image in the batch. Training therefore
+penalises predictions that are accurate on average but insufficiently specific to the individual
+image, which is the failure mode that matters most when two candidate images are nearly identical.
+A small entropy term is included alongside it, which discourages the comparison from being
+dominated by a single competing image within the batch.
+
+In our testing this change improved discrimination for every NSD subject we evaluated, and for our
+own subject as well, on both forced choice and retrieval. For that reason `ube_base_infonce.pt` is
+the default base, and `ube_base_recon.pt` is provided as the matched reconstruction-only baseline
+for anyone who wants to compare the two directly.
+
+## Pretraining on NSD
+
+Two scripts are provided, and they differ in the respect described below.
+
+### nsd/, the original training code
+
+The script `extras/nsd/train_encoder.py` is the Irani lab's own base training script, reproduced
+essentially unchanged. The only modifications are to the import paths, to reading the data and
+save directories from environment variables so that it runs on any machine, and the addition of a
+flag that runs a few batches as a quick check. This is the code that produced the
+reconstruction-only base, so it is the appropriate starting point for conventional pretraining.
 
 ```bash
 cd extras/nsd
@@ -23,65 +50,59 @@ UBE_SMOKE=1 python train_encoder.py          # 3 batches, just checks it runs
 python train_encoder.py                      # the real thing, days on one gpu
 ```
 
-It writes a full pickled model into `UBE_SAVE_DIR`. Convert it to the small format with
-`tools/export_base.py` if you want to share it or use it with `train_encoder.py --base`.
+It writes a full pickled model into `UBE_SAVE_DIR`, which can be converted into the compact weight
+format using `tools/export_base.py` if you want to distribute it or use it with
+`train_encoder.py --base`. It also requires `tensorboardX`, which is listed in `requirements.txt`.
 
-Needs `tensorboardX` (in requirements.txt).
+### train_base_contrastive.py, the contrastive version
 
-### train_base_contrastive.py : our modified version
+This script trains the same model with the contrastive objective described above. It exists as a
+separate script rather than as an additional flag on the original for a specific technical reason.
+The original data loader draws a different random sample of 5,000 voxels for every item, and it
+also allows a single batch to contain items from different subjects. Because the contrastive term
+compares the items within a batch against one another, it is only meaningful when all of those
+items are described in the same voxel space. Adding the term to the original loop would therefore
+have compared patterns that were defined over different sets of voxels, which would produce a
+number without producing a meaningful one.
 
-This is the contrastive variant, and it is a separate script rather than a flag on theirs for a
-real reason. Their `EncDataset` samples a **different random set of 5,000 voxels for every
-item**, and batches mix subjects. A contrastive term compares the items in a batch against each
-other, so it is only meaningful if they are all in the same voxel space. Bolting one onto their
-loop would silently compare patterns across mismatched voxels.
-
-So this version builds batches differently: one subject per batch, one shared voxel sample per
-batch. Everything else (the model, the reconstruction loss, the augmentation) matches.
+This version accordingly constructs batches so that every item in a batch comes from the same
+subject and uses the same sampled voxels. Everything else, including the model, the reconstruction
+loss and the image augmentation, follows the original.
 
 ```bash
 python extras/train_base_contrastive.py --data_dir /path/to/nsd_data --objective infonce --out mybase.pt
 python extras/train_base_contrastive.py --data_dir /path/to/nsd_data --smoke --out /tmp/x.pt
 ```
 
-`--objective recon` gives a reconstruction run with the same batching, which is the matched
-control if you want to compare objectives. It writes the small weight format directly, so the
-output drops straight into `train_encoder.py --base`.
+Passing `--objective recon` performs a reconstruction-only run using the same batching scheme,
+which is the appropriate matched control when comparing the two objectives against each other. The
+script writes the compact weight format directly, so its output can be passed straight to
+`train_encoder.py --base`.
 
-Be aware of what is and is not verified here. The `--smoke` path is tested and works: it loads
-NSD, builds the model, takes 3 steps and saves a 9.6 MB checkpoint. **No base has been trained
-to completion with this script**, and the exact hyperparameters and batching used for the
-contrastive checkpoint we ship were never written down, so this reproduces the objective, not
-that specific checkpoint. If you retrain, keep your own recon and contrastive runs matched and
-compare those two to each other.
+It is worth being clear about what has and has not been verified here. The `--smoke` path has been
+tested and works, in that it loads NSD, builds the model, takes three optimisation steps and saves
+a checkpoint in the expected format. No base has been trained to completion using this script,
+however, and the exact hyperparameters and batching used to produce the contrastive checkpoint that
+is distributed here were not recorded at the time. This script therefore reproduces the objective
+rather than that particular checkpoint, and anyone retraining should keep their own reconstruction
+and contrastive runs matched to each other and draw comparisons only between those two.
 
-## what worked
+## Other things worth knowing
 
-- The contrastive (InfoNCE + entropy) pretraining objective. It beat the reconstruction-only
-  base on every NSD subject we tried, and on our own subject too, on both forced choice and
-  retrieval. This is the main win and it is the default.
-- Warm starting a new subject's voxel embeddings from the nearest NSD voxel instead of
-  random init. Helped on sub-005. Needs a voxel correspondence you have to build yourself, see
-  the warm start section of the main README.
-- Scoring at 6 to 9 s after onset for the real time case, and not widening the window.
+Two further results from our own testing are worth recording, since both affect how the analysis
+should be run rather than how the encoder is trained.
 
-## what did not work
+Initialising a new subject's voxel embeddings from the most similar NSD voxel, rather than at
+random, improved the fit for one of our subjects. Doing so requires a voxel correspondence that has
+to be constructed separately, and the warm starting section of the main README describes what is
+involved.
 
-Written down so nobody burns a week on them again.
+For real-time use, scoring approximately six to nine seconds after stimulus onset worked best, and
+widening the analysis window did not allow earlier decoding, because a wider window necessarily
+includes volumes acquired before the response has developed.
 
-- **Hard negative batch mining with a DINOv2 teacher** (the "Breaking the Batch Barrier" idea).
-  The batches really were much harder in teacher space, we checked, and it still did nothing:
-  slightly worse than random batching across seeds. Mining in voxel space instead was slightly
-  positive but it does not survive a correction for the number of variants tried, so treat it as
-  unproven rather than a result.
-- Continuous per-voxel reliability weighting instead of a binary reliability mask. No effect at
-  all, even though the reliability values were genuinely spread out. It reallocates the loss
-  without changing what the model learns to tell apart.
-- Reinforcement learning and evolution strategies on top of the contrastive objective. Reward
-  saturated, no gain.
-- Brain-JEPA style masking (gradient-position init, cluster and predicted masking). Neutral.
-- Warm starting from a z-prior. Failed, the session shift is too large.
-- Decoding into CLIP space to tell pairmates apart. This is the obvious thing to try and it is
-  clearly worse than going through the encoder, on the same trials. Pairmates collapse to nearly
-  the same CLIP vector, so the information is not there to decode. Low level (VGG) features do
-  better than CLIP but still lose to the encoder.
+Finally, decoding the measured response into CLIP space in order to distinguish pairmates is the
+more obvious approach, and it performed clearly worse than running the encoder forward, on the same
+trials. Pairmate images occupy nearly the same position in CLIP space, so the information needed to
+separate them is substantially reduced before the comparison is made. Lower-level image features
+performed better than CLIP in this respect but still did not match the encoder.
