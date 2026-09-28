@@ -6,3 +6,4 @@ cache/*
 ckpt_export/*
 !*/.gitkeep
 __pycache__/
+extras/nsd/logs/
