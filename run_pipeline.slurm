@@ -1,34 +1,30 @@
 #!/bin/bash
 #SBATCH --job-name=ube_2afc
-#SBATCH --account=knorman
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=96G
-#SBATCH --time=02:00:00
 #SBATCH --output=logs/%x_%j.log
+# no account or partition here on purpose, submit.sh adds whatever your cluster needs
 
-# runs everything for one dataset: check inputs -> train encoder -> 2AFC/CPD
-# usage (from inside ube_2afc/):  sbatch run_pipeline.slurm NAME
-#   NAME = sub-06 or sub-07 for Bixby (input file gets built automatically)
-#   NAME = anything else if you already made data/NAME.npz with make_inputs.py
+# checks your input file, fits the encoder to the subject, then scores 2afc and cpd
+# do not run this directly, use:  ./submit.sh NAME
 
-NAME=${1:-sub-06}
-PY=/scratch/gpfs/KNORMAN/qanguyen/Brain-IT/brain-it/bin/python
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-cd $SLURM_SUBMIT_DIR
-echo "$NAME  $(hostname)  $(date)"
+set -e
+cd ${SLURM_SUBMIT_DIR:-.}
+. ./config.sh
+NAME=${1:?usage: ./submit.sh NAME}
+export UBE_TORCH_HUB=$TORCH_HUB
+echo "$NAME on $(hostname) at $(date)"
 
 if [ ! -f data/$NAME.npz ]; then
-  if [ "$NAME" = "sub-06" ] || [ "$NAME" = "sub-07" ]; then
-    $PY -u make_inputs_bixby.py --sub $NAME || exit 1
-  else
-    echo "PROBLEM: data/$NAME.npz doesn't exist. Make it first with make_inputs.py (see README)."
-    exit 1
-  fi
+  echo "PROBLEM: data/$NAME.npz does not exist. make it first with make_inputs.py, see the readme."
+  exit 1
+fi
+if [ ! -f "$BASE" ]; then
+  echo "PROBLEM: pretrained base $BASE is missing. run ./download_checkpoints.sh"
+  exit 1
 fi
 
-$PY -u check_inputs.py data/$NAME.npz || { echo "stopping, fix the input file first"; exit 1; }
-$PY -u train_encoder.py --data data/$NAME.npz --tag ${NAME}_infonce --lam 1 --went 0.1 || exit 1
-$PY -u eval_2afc.py --data data/$NAME.npz --enc checkpoints/${NAME}_infonce.pth || exit 1
-
+$PY -u check_inputs.py data/$NAME.npz
+$PY -u train_encoder.py --data data/$NAME.npz --tag ${NAME}_infonce --base "$BASE" --lam 1 --went 0.1
+$PY -u eval_2afc.py     --data data/$NAME.npz --enc checkpoints/${NAME}_infonce.pth
+$PY -u make_pred_cache.py --data data/$NAME.npz --enc checkpoints/${NAME}_infonce.pth \
+    --out cache/${NAME}_preds.npz          # so the online scoring is ready to go
 echo "done $(date)"

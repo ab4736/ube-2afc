@@ -23,17 +23,24 @@ import numpy as np
 import torch
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--data", required=True)
-ap.add_argument("--enc", required=True)
+ap.add_argument("--data", required=True, help="input npz, the same one you trained on")
+ap.add_argument("--enc", required=True, help="fitted encoder from train_encoder.py")
 ap.add_argument("--out", default=None, help="output prefix (default results/<enc name>)")
+ap.add_argument("--hub", default=os.environ.get("UBE_TORCH_HUB", ""))
+ap.add_argument("--base", default="", help="only needed if the base moved since training")
 args = ap.parse_args()
-dev = "cuda"
+dev = "cuda" if torch.cuda.is_available() else "cpu"
+if args.hub:
+    torch.hub.set_dir(args.hub)
+    sys.path.insert(0, os.path.join(args.hub, "facebookresearch_dinov2_main"))
 MEAN = np.array([0.485, 0.456, 0.406]).reshape(1, 1, 3)
 STD = np.array([0.229, 0.224, 0.225]).reshape(1, 1, 3)
 
 d = np.load(args.data)
 Y, pairs, names = d["Y_test"].astype(np.float32), d["pair_idx"], d["test_names"]
-model = torch.load(args.enc, weights_only=False).to(dev).eval()
+from ube.load import load_subject
+model = load_subject(args.enc, hub=args.hub, device=dev, n_voxels=d["Y_test"].shape[1],
+                     base=args.base or None).eval()
 NVOX = model.voxel_embed.shape[0]
 assert NVOX == Y.shape[1], f"encoder has {NVOX} voxels but data has {Y.shape[1]}"
 

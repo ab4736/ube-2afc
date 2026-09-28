@@ -2,5 +2,7 @@ data/*
 checkpoints/*
 results/*
 logs/*
+cache/*
+ckpt_export/*
 !*/.gitkeep
 __pycache__/

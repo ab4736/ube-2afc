@@ -1,17 +1,10 @@
 """
-Build the input file for one Bixby subject (sub-06 / sub-07).
+INTERNAL EXAMPLE, our lab's data only. The paths below are on our cluster and will not exist
+for you. Use make_inputs.py instead, it does the same thing from plain files.
 
-Reads {sub}_roi_vox_all_sessions.pkl, uses the pretraining sessions (01/02/03),
-keeps the union_mask voxels, z-scores each voxel within each session, and
-averages repeats of the same image. The 26 pair_* images (13 pairmate pairs)
-are held out as the test set so the encoder never sees them.
-
-If you have a different dataset, you don't need this script. Just write an npz
-with the same keys (see README).
-
-usage:
-    python make_inputs_bixby.py --sub sub-06
-    -> data/sub-06.npz
+Kept here because it is a worked example of how to go from raw per-session betas to an input
+file: z-score each voxel within session, average repeats of each image, hold the pairmate
+images out of training.
 """
 import os, pickle, argparse, collections
 import numpy as np

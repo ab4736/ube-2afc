@@ -1,0 +1,9 @@
+# tested with python 3.11
+torch>=2.1
+numpy>=1.24
+scipy>=1.10
+pillow>=9.0
+# only needed if you use the real time path in realtime/
+nibabel>=5.0
+nilearn>=0.10
+pandas>=2.0

@@ -28,12 +28,12 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 ap = argparse.ArgumentParser()
 ap.add_argument("--name", required=True, help="what to call this dataset, e.g. sub-08")
-ap.add_argument("--betas", required=True)
-ap.add_argument("--trials", required=True)
-ap.add_argument("--pairs", required=True)
+ap.add_argument("--betas", required=True, help=".npy or .mat, one row per trial, one column per voxel")
+ap.add_argument("--trials", required=True, help="csv with an image column, one line per row of the betas")
+ap.add_argument("--pairs", required=True, help="csv with columns image_a,image_b")
 ap.add_argument("--images", default="", help="folder with the images (skip if the csv has full paths)")
-ap.add_argument("--val_frac", type=float, default=0.10)
-ap.add_argument("--seed", type=int, default=0)
+ap.add_argument("--val_frac", type=float, default=0.10, help="fraction held out for the health check")
+ap.add_argument("--seed", type=int, default=0, help="random seed for the train/val split")
 args = ap.parse_args()
 
 

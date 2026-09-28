@@ -1,59 +1,52 @@
-"""
-Fit the UBE encoder to a new subject.
-
-The base encoder (DINOv2 backbone + the shared UBE layers, trained on NSD) is
-frozen. The only thing we train is voxel_embed: one learned vector per voxel of
-YOUR subject. That's what lets the same encoder predict a brain it has never seen.
-
-loss = MSE - 0.1 * cosine                      (reconstruction)
-     + lam * InfoNCE                           (pred_i should match obs_i more
-                                                than any other obs_j in the batch)
-     - went * entropy                          (small regularizer on the InfoNCE)
-
---lam 0 --went 0 gives the plain reconstruction encoder.
---lam 1 --went 0.1 is the discriminative one (this is what we use).
-
-usage:
-    python train_encoder.py --data data/sub-06.npz --tag sub-06_infonce
-    -> checkpoints/sub-06_infonce.pth
-"""
 import os, sys, argparse, time
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)  # so the pickled base finds models/ and dinov2/ in this folder
+sys.path.insert(0, HERE)
 import numpy as np
 import torch, torch.nn as nn, torch.nn.functional as F, torch.optim as optim
 from scipy.ndimage import shift as ndshift
 
+# fits the encoder to one subject
+# the pretrained base stays frozen, the only thing we train is voxel_embed, which is one
+# learned vector per voxel of this person. that is why 2000 images is enough
+#
+# --lam 1 --went 0.1   contrastive, each prediction has to match its own beta better than
+#                      the other betas in the batch. this is the one that helps pairmates
+# --lam 0 --went 0     plain reconstruction, the baseline
+
 ap = argparse.ArgumentParser()
-ap.add_argument("--data", required=True, help="npz from make_inputs_bixby.py (or your own)")
-ap.add_argument("--tag", required=True)
-ap.add_argument("--base", default="/scratch/gpfs/KNORMAN/ab4736/brainit-fmri/results/"
-                                  "saved_models/encoder_ch128_base_nce20_ent.pth")
-ap.add_argument("--lam", type=float, default=1.0)
-ap.add_argument("--tau", type=float, default=0.1)
-ap.add_argument("--went", type=float, default=0.1)
-ap.add_argument("--epochs", type=int, default=40)
-ap.add_argument("--bs", type=int, default=32)
-ap.add_argument("--lr", type=float, default=1e-3)
-ap.add_argument("--seed", type=int, default=0)
-ap.add_argument("--outdir", default=f"{HERE}/checkpoints")
+ap.add_argument("--data", required=True, help="input npz from make_inputs.py")
+ap.add_argument("--tag", required=True, help="name for the output checkpoint")
+ap.add_argument("--base", required=True, help="pretrained base weights, e.g. checkpoints/ube_base_infonce.pt")
+ap.add_argument("--lam", type=float, default=1.0, help="weight on the contrastive term, 0 turns it off")
+ap.add_argument("--tau", type=float, default=0.1, help="contrastive temperature")
+ap.add_argument("--went", type=float, default=0.1, help="weight on the entropy term")
+ap.add_argument("--epochs", type=int, default=40, help="passes over the training images")
+ap.add_argument("--bs", type=int, default=32, help="batch size, also how many negatives the contrastive term sees")
+ap.add_argument("--lr", type=float, default=1e-3, help="learning rate")
+ap.add_argument("--seed", type=int, default=0, help="random seed")
+ap.add_argument("--hub", default=os.environ.get("UBE_TORCH_HUB", ""), help="torch hub cache with dinov2, so it works offline")
+ap.add_argument("--outdir", default=f"{HERE}/checkpoints", help="where to save the fitted encoder")
+ap.add_argument("--warm_embed", default="", help="optional nsd_voxel_embed_*.pt to warm start from")
+ap.add_argument("--warm_map", default="", help="int .npy, one entry per voxel, which nsd voxel it matches")
 args = ap.parse_args()
+
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
-dev = "cuda"
+dev = "cuda" if torch.cuda.is_available() else "cpu"
+if args.hub:
+    torch.hub.set_dir(args.hub)
+    sys.path.insert(0, os.path.join(args.hub, "facebookresearch_dinov2_main"))
 
 MEAN = np.array([0.485, 0.456, 0.406]).reshape(1, 1, 3)
 STD = np.array([0.229, 0.224, 0.225]).reshape(1, 1, 3)
 
 
 def to_tensor(imgs, augment):
-    # imgs: uint8 (n,224,224,3). ImageNet normalization, same as the base was trained with.
-    # augment = small random shift (+-3 px), train only.
     out = []
     for img in imgs:
         im = img / 255.0
         if augment:
-            dx, dy = np.random.randint(-3, 4, size=2)
+            dx, dy = np.random.randint(-3, 4, size=2)     # small jitter, same as pretraining
             im = ndshift(im, [dx, dy, 0], prefilter=False, order=0, mode="nearest")
         out.append(((im - MEAN) / STD).transpose(2, 0, 1))
     return torch.from_numpy(np.stack(out).astype(np.float32)).to(dev)
@@ -67,21 +60,43 @@ def zs(a):
 d = np.load(args.data)
 Xtr, Ytr = d["img_train"], d["Y_train"].astype(np.float32)
 N, NVOX = Ytr.shape
-print(f"[{args.tag}] {args.data}: {N} train images, {NVOX} voxels, "
-      f"lam={args.lam} went={args.went}", flush=True)
+print(f"[{args.tag}] {N} training images, {NVOX} voxels, lam={args.lam} went={args.went}", flush=True)
 
-model = torch.load(args.base, weights_only=False)
-for p in model.parameters():
-    p.requires_grad = False
-EMB = model.voxel_embed.shape[1]
-# fresh random voxel embeddings for this subject (same init scale as the base)
-ve = (0.1 / (2 * np.sqrt(EMB))) * torch.randn(NVOX, EMB)
-model.voxel_embed = nn.Parameter(ve.float(), requires_grad=True)
-model = model.to(dev)
+# warm start is optional. instead of random voxel embeddings, each voxel starts from the nsd
+# voxel it most resembles. you have to supply that mapping yourself, see the readme
+warm = None
+if args.warm_embed:
+    if not args.warm_map:
+        sys.exit("PROBLEM: --warm_embed also needs --warm_map, which says what nsd voxel each of "
+                 "your voxels should copy. see the warm start section of the readme")
+    nsd = torch.load(args.warm_embed, map_location="cpu")["voxel_embed"]
+    mp = np.load(args.warm_map)
+    if len(mp) != NVOX:
+        sys.exit(f"PROBLEM: --warm_map has {len(mp)} entries but this subject has {NVOX} voxels")
+    if mp.min() < 0 or mp.max() >= nsd.shape[0]:
+        sys.exit(f"PROBLEM: --warm_map values have to be between 0 and {nsd.shape[0] - 1}")
+    warm = nsd[torch.from_numpy(mp.astype(np.int64))].clone()
+    print(f"[{args.tag}] warm starting from {os.path.basename(args.warm_embed)}", flush=True)
+
+if args.base.endswith(".pt"):                             # small file, we rebuild the model
+    from ube.load import load_encoder
+    model = load_encoder(args.base, n_voxels=NVOX, hub=args.hub, device=dev, voxel_embed=warm)
+    for p in model.parameters():
+        p.requires_grad = False
+    model.voxel_embed.requires_grad = True                # only the voxel embeddings train
+else:                                                     # the old 1.5 GB pickled checkpoint
+    model = torch.load(args.base, weights_only=False, map_location="cpu")
+    for p in model.parameters():
+        p.requires_grad = False
+    EMB = model.voxel_embed.shape[1]
+    ve = warm if warm is not None else (0.1 / (2 * np.sqrt(EMB))) * torch.randn(NVOX, EMB)
+    model.voxel_embed = nn.Parameter(ve.float(), requires_grad=True)
+    model = model.to(dev)
+
 opt = optim.Adam([model.voxel_embed], lr=args.lr, amsgrad=True)
-
 Y_t = torch.from_numpy(Ytr).to(dev)
 vind = torch.arange(NVOX).unsqueeze(0).to(dev)
+
 t0 = time.time()
 for ep in range(1, args.epochs + 1):
     model.train()
@@ -90,7 +105,7 @@ for ep in range(1, args.epochs + 1):
     for s in range(0, N, args.bs):
         idx = perm[s:s + args.bs]
         if len(idx) < 4:
-            continue
+            continue                                      # tiny batches make the contrastive term junk
         x = to_tensor(Xtr[idx], augment=True)
         obs = Y_t[torch.from_numpy(idx).to(dev)]
         opt.zero_grad()
@@ -101,9 +116,8 @@ for ep in range(1, args.epochs + 1):
             lab = torch.arange(len(idx)).to(dev)
             loss = loss + args.lam * 0.5 * (F.cross_entropy(sim, lab) + F.cross_entropy(sim.T, lab))
             if args.went > 0:
-                p_off = F.softmax(sim.clone().fill_diagonal_(-1e9), dim=1)
-                H = -(p_off * torch.log(p_off + 1e-9)).sum(1).mean()
-                loss = loss - args.went * H
+                off = F.softmax(sim.clone().fill_diagonal_(-1e9), dim=1)
+                loss = loss - args.went * (-(off * torch.log(off + 1e-9)).sum(1).mean())
         loss.backward()
         opt.step()
         tot += loss.item()
@@ -113,5 +127,8 @@ for ep in range(1, args.epochs + 1):
 
 os.makedirs(args.outdir, exist_ok=True)
 out = f"{args.outdir}/{args.tag}.pth"
-torch.save(model, out)
-print(f"[{args.tag}] saved {out}", flush=True)
+# saves the voxel embeddings and which base they belong to, a few MB instead of 1.2 GB
+torch.save(dict(voxel_embed=model.voxel_embed.detach().cpu(), base=os.path.abspath(args.base),
+                n_voxels=NVOX, data=os.path.abspath(args.data), tag=args.tag,
+                lam=args.lam, went=args.went, epochs=args.epochs, seed=args.seed), out)
+print(f"[{args.tag}] saved {out}  {os.path.getsize(out) / 1e6:.1f} MB", flush=True)
