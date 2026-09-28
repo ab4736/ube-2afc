@@ -1,8 +1,5 @@
 # ube-2afc: pairmate discrimination from fMRI
 
-Can you tell, from someone's brain response alone, which of two near-identical images they were
-looking at? This runs that test on your own data, offline or live during a scan.
-
 Built on the Universal Brain Encoder (UBE), [Beliy et al.](https://arxiv.org/abs/2406.12179). The
 encoder itself comes from the Irani lab, their code is at
 [WeizmannVision/brainit-fmri](https://github.com/WeizmannVision/brainit-fmri) if you want to look
